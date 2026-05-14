@@ -15,9 +15,8 @@ type SourceConfig = {
 
 const REQUESTED_AGRICULTURE_SOURCES = [
   "IndiaMART Agriculture",
-  "AgriBegri",
-  "AgroStar",
-  "Agriculture.com",
+  "amazon.in Agriculture",
+  "flipkart Agriculture",
 ] as const;
 
 const ACTIVE_SOURCES: SourceConfig[] = [
@@ -27,20 +26,15 @@ const ACTIVE_SOURCES: SourceConfig[] = [
     buildUrl: (query) => `https://dir.indiamart.com/search.mp?ss=${encodeURIComponent(query)}`,
   },
   {
-    source: "AgriBegri",
-    baseUrl: "https://www.agribegri.com",
-    buildUrl: (query) => `https://www.agribegri.com/search?search=${encodeURIComponent(query)}`,
+    source: "amazon.in Agriculture",
+    baseUrl: "https://www.amazon.in",
+    buildUrl: (query) => `https://www.amazon.in/s?k=${encodeURIComponent(query)}`,
   },
   {
-    source: "AgroStar",
-    baseUrl: "https://www.agrostar.in",
-    buildUrl: (query) => `https://www.agrostar.in/search?q=${encodeURIComponent(query)}`,
-  },
-  {
-    source: "Agriculture.com",
-    baseUrl: "https://www.agriculture.com",
-    buildUrl: (query) => `https://www.agriculture.com/search?searchTerm=${encodeURIComponent(query)}`,
-  },
+    source: "flipkart Agriculture",
+    baseUrl: "https://www.flipkart.com",
+    buildUrl: (query) => `https://www.flipkart.com/search?q=${encodeURIComponent(query)}`,
+  }
 ];
 
 const AGRICULTURE_KEYWORDS =
@@ -122,13 +116,12 @@ function fallbackSourceUrl(source: (typeof REQUESTED_AGRICULTURE_SOURCES)[number
   if (source === "IndiaMART Agriculture") {
     return `https://dir.indiamart.com/search.mp?ss=${encoded}`;
   }
-  if (source === "AgriBegri") {
-    return `https://www.agribegri.com/search?search=${encoded}`;
+  if (source === "amazon.in Agriculture") {
+    return `https://www.amazon.in/s?k=${encoded}`;
   }
-  if (source === "AgroStar") {
-    return `https://www.agrostar.in/search?q=${encoded}`;
+  if (source === "flipkart Agriculture") {
+    return `https://www.flipkart.com/search?q=${encoded}`;
   }
-  return `https://www.agriculture.com/search?searchTerm=${encoded}`;
 }
 
 function buildFallbackSignals(query: string, targetCount: number) {
@@ -139,23 +132,42 @@ function buildFallbackSignals(query: string, targetCount: number) {
     "Irrigation improvement options",
     "Farm tool shortlist",
     "Seasonal crop planning ideas",
+    "Advanced farming equipment",
+    "Organic farming solutions",
+    "Smart irrigation systems",
+    "Heavy duty tractors",
+    "Pest control kits",
+    "Harvesting equipment",
+    "Greenhouse supplies",
+    "Nursery saplings",
+    "Hydroponics starter kit",
+    "Compost and manure",
+    "Drip irrigation kit",
+    "Sprayers and dusters",
+    "Cultivator tools",
+    "Seeding machines"
   ];
   const now = new Date().toISOString();
   const signals: AgricultureSignal[] = [];
 
-  for (const source of REQUESTED_AGRICULTURE_SOURCES) {
-    for (const template of templates) {
-      signals.push({
-        source,
-        title: `${template} for ${query}`,
-        summary: `${source} agriculture suggestion generated from realtime fallback.`,
-        sourceUrl: fallbackSourceUrl(source, query),
-        publishedAt: now,
-      });
-      if (signals.length >= targetCount) {
-        return signals;
+  // Continue generating until we reach targetCount
+  let loopCount = 0;
+  while (signals.length < targetCount && loopCount < 10) {
+    for (const source of REQUESTED_AGRICULTURE_SOURCES) {
+      for (const template of templates) {
+        signals.push({
+          source,
+          title: `${template} for ${query} (Option ${loopCount + 1})`,
+          summary: `${source} agriculture suggestion generated from realtime fallback.`,
+          sourceUrl: fallbackSourceUrl(source, query)!,
+          publishedAt: now,
+        });
+        if (signals.length >= targetCount) {
+          return signals;
+        }
       }
     }
+    loopCount++;
   }
 
   return signals;
@@ -250,15 +262,43 @@ export async function getLiveAgricultureSignals(query: string, limit = 24) {
     new Map(successful.map((signal) => [signal.sourceUrl, signal])).values()
   );
 
-  const ranked = deduplicated
-    .map((signal) => ({ signal, score: scoreSignal(signal, queryTerms) }))
-    .sort((a, b) => {
-      if (b.score !== a.score) {
-        return b.score - a.score;
-      }
-      return new Date(b.signal.publishedAt).valueOf() - new Date(a.signal.publishedAt).valueOf();
-    })
-    .map((entry) => entry.signal);
+  const scored = deduplicated.map((signal) => ({
+    signal,
+    score: scoreSignal(signal, queryTerms),
+  }));
 
-  return ranked.slice(0, limit);
+  const groupedBySource = new Map<string, typeof scored>();
+  for (const item of scored) {
+    const group = groupedBySource.get(item.signal.source) ?? [];
+    group.push(item);
+    groupedBySource.set(item.signal.source, group);
+  }
+
+  const sources = Array.from(groupedBySource.keys());
+  for (const source of sources) {
+    const group = groupedBySource.get(source)!;
+    group.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return new Date(b.signal.publishedAt).valueOf() - new Date(a.signal.publishedAt).valueOf();
+    });
+  }
+
+  const finalMixed: AgricultureSignal[] = [];
+  let added = true;
+  let index = 0;
+
+  while (finalMixed.length < limit && added) {
+    added = false;
+    for (const source of sources) {
+      if (finalMixed.length >= limit) break;
+      const group = groupedBySource.get(source)!;
+      if (index < group.length) {
+        finalMixed.push(group[index].signal);
+        added = true;
+      }
+    }
+    index++;
+  }
+
+  return finalMixed;
 }

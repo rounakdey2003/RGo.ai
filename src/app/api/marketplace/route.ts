@@ -75,7 +75,8 @@ Return strict minified JSON object with exactly this shape:
 {"items":[{"name":"string","category":"string","priceInr":3999,"source":"string","sourceUrl":"https://...","reason":"string"}]}
 
 Rules:
-- Generate exactly 8 items.
+- Generate exactly 50 items.
+- Ensure the generated items include a balanced mix of all provided sources.
 - Every suggestion must be agriculture-only (tools, crops, soil, seeds, irrigation, farm operations).
 - source must exactly match one of the provided sources.
 - sourceUrl must exactly match one of the provided sourceUrl values.
